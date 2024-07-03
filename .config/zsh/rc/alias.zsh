@@ -10,7 +10,7 @@ alias ..='cd ..'
 alias zcompile_zshrc='zcompile ~/.zshrc'
 alias rez='exec zsh'
 alias sc='screen'
-alias l='less'
+alias l='ls -ahl'
 alias less-plain='LESS="" less'
 alias sudo='sudo -H '
 alias cl='clear'
@@ -42,20 +42,8 @@ alias 777='chmod 777'
 alias gre='grep -H -n -I --color=auto'
 
 ## application ##
-# vi
-alias vi="$EDITOR"
-alias sv="sudo $EDITOR"
-alias hx="helix"
 
 ## development ##
-alias py='python'
-alias gdb='gdb -silent -nh -x "$XDG_CONFIG_HOME"/gdb/init'
-
-# Easily trace my history
-alias gd='dirs -v; echo -n "select number: "; read newdir; cd +"$newdir"' # AUTO_PUSHD is required
-
-# man
-alias man-ascii-color-code="man 4 console_codes"
 
 # tmux
 alias t='\tmux -2'
@@ -146,11 +134,6 @@ alias move-bottom='tput cup $(($(stty size|cut -d " " -f 1))) 0 && tput ed'
 # luajit patch https://github.com/LuaJIT/LuaJIT/issues/369
 alias luajit="rlwrap luajit"
 
-# translate
-alias transj='trans ja:'
-alias tj='trans ja:'
-alias te='trans :ja'
-
 if builtin command -v nerdctl > /dev/null 2>&1; then
 	alias docker='nerdctl'
 fi
@@ -168,44 +151,6 @@ function alias-improve() {
 alias hdu='ncdu --color dark -rr -x --exclude .git --exclude node_modules'
 alias disk-usage='sudo ncdu --color dark -rr -x --exclude .git --exclude node_modules /'
 
-
-#==============================================================#
-##          ArchLinux                                         ##
-#==============================================================#
-
-if [ -f /etc/arch-release ] ;then
-	# install
-	alias pac-update='sudo pacman -Sy'
-	alias pac-upgrade='sudo pacman -Syu'
-	alias pac-upgrade-force='sudo pacman -Syyu'
-	alias pac-install='sudo pacman -S'
-	alias pac-remove='sudo pacman -Rs'
-	# search remote package
-	alias pac-search='pacman -Ss'
-	alias pac-package-info='pacman -Si'
-	# search local package
-	alias pac-installed-list='pacman -Qs'
-	alias pac-installed-package-info='pacman -Qi'
-	alias pac-installed-list-export='pacman -Qqen' # import: sudo pacman -S - < pkglist.txt
-	alias pac-installed-files='pacman -Ql'
-	alias pac-unused-list='pacman -Qtdq'
-	alias pac-search-from-path='pacman -Qqo'
-	# search package from filename
-	alias pac-included-files='pacman -Fl'
-	alias pac-search-by-filename='pkgfile'
-	# log
-	alias pac-log='cat /var/log/pacman.log | \grep "installed\|removed\|upgraded"'
-	alias pac-aur-packages='pacman -Qm'
-	# etc
-	alias pac-clean='sudo pacman -Scc'
-	alias pac-get-update-pkg='pacman -Si $(pacman -Su --print --print-format %n)'
-	alias pac-dependency='pacman -Qoq '
-	# aur
-	if builtin command -v paru > /dev/null 2>&1; then
-		alias paru-installed-list='paru -Qm'
-		alias paru-clean='paru -Sc'
-	fi
-fi
 
 alias screencast='wf-recorder -g "$(slurp)" -f ~/Pictures/wf_$(date "+%y%m%d-%H%M%S").mp4'
 alias xterm-modifyOtherKyes='xterm -xrm "*modifyOtherKeys:1"'
