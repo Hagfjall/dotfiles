@@ -169,17 +169,6 @@ fi
 #--------------------------------#
 # extension
 #--------------------------------#
-# zinit wait'0' lucid \
-	#   light-mode for @t413/zsh-background-notify
-if [[ -z "$SSH_CONNECTION" ]]; then
-	zinit wait'0' lucid \
-		atload"source $ZHOMEDIR/rc/pluginconfig/zsh-auto-notify_atload.zsh" \
-		light-mode for @MichaelAquilina/zsh-auto-notify
-fi
-
-zinit wait'2' lucid \
-	light-mode for @hlissner/zsh-autopair
-
 # cannot be disabled bindkey '^T' zsh-startify
 #zplugin wait'2' lucid \
 	#  light-mode for @zdharma/zsh-startify
