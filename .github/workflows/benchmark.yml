@@ -13,25 +13,6 @@ permissions:
   contents: write
 
 jobs:
-  sync:
-    name: Sync README
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: sync
-        env:
-          TARGET_BRANCH: "gh-pages"
-        run: |
-          files=("README.md" ".github/pages/_config.yml")
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'action@github.com'
-          git fetch                         # fetch branches
-          git checkout $TARGET_BRANCH       # checkout to your branch
-          git checkout ${GITHUB_REF##*/} -- ${files[@]} # copy files from the source branch
-          git add -A
-          git diff-index --quiet HEAD ||  git commit -am "deploy files"  # commit to the repository (ignore if no modification)
-          git push origin $TARGET_BRANCH # push to remote branch
-
   benchmark:
     runs-on: ubuntu-latest
     container: archlinux:latest
@@ -66,17 +47,3 @@ jobs:
         run: ./.github/scripts/benchmark.sh
         env:
           TERM: screen-256color
-      - name: git stash
-        run: git stash
-      - name: Upload benchmark
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: customSmallerIsBetter
-          output-file-path: /tmp/result-benchmark.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          benchmark-data-dir-path: .github/pages/dev/bench
-          auto-push: true
-          comment-on-alert: true
-          fail-on-alert: false
-          alert-threshold: "150%"
-          alert-comment-cc-users: "@yutkat"
