@@ -39,7 +39,5 @@ ulimit -c unlimited
 # Permissions when creating files
 umask 022
 
-export DISABLE_DEVICONS=false
-
 # Report CPU usage for commands running longer than 10 seconds
-#REPORTTIME=10
+REPORTTIME=10

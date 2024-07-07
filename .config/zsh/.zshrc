@@ -2,10 +2,10 @@
 #               .zshrc                                         #
 #==============================================================#
 
-# profile
-if [ "$ZSHRC_PROFILE" != "" ]; then
-	zmodload zsh/zprof && zprof > /dev/null
-fi
+# # profile
+# if [ "$ZSHRC_PROFILE" != "" ]; then
+# 	zmodload zsh/zprof && zprof > /dev/null
+# fi
 
 #--------------------------------------------------------------#
 ##          Base Configuration                                ##

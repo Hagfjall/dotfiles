@@ -156,14 +156,14 @@ zinit wait'1' lucid \
 	#   atload"source $ZHOMEDIR/rc/pluginconfig/pmy_atload.zsh" \
 	#   for @relastle/pmy
 
-if [ "$ZSHRC_BENCH" != "true" ]; then
-	zinit wait'2' lucid silent blockf depth"1" \
-		atclone'deno cache --no-check ./src/cli.ts' \
-		atpull'%atclone' \
-		atinit"source $ZHOMEDIR/rc/pluginconfig/zeno_atinit.zsh" \
-		atload"source $ZHOMEDIR/rc/pluginconfig/zeno_atload.zsh" \
-		for @yuki-yano/zeno.zsh
-fi
+# if [ "$ZSHRC_BENCH" != "true" ]; then
+# 	zinit wait'2' lucid silent blockf depth"1" \
+# 		atclone'deno cache --no-check ./src/cli.ts' \
+# 		atpull'%atclone' \
+# 		atinit"source $ZHOMEDIR/rc/pluginconfig/zeno_atinit.zsh" \
+# 		atload"source $ZHOMEDIR/rc/pluginconfig/zeno_atload.zsh" \
+# 		for @yuki-yano/zeno.zsh
+# fi
 
 
 #--------------------------------#

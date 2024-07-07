@@ -1,8 +1,5 @@
 [core]
   excludesfile = ~/.config/git/gitignore_global
-  #hooksPath = ~/.config/git/githooks
-  # git config core.hooksPath .githooks
-  #git config --global init.templatedir '~/.config/git/git_template'
 
 [init]
   defaultBranch = main
