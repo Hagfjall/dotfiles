@@ -79,10 +79,6 @@ zinit wait'1' lucid \
 #--------------------------------#
 zinit wait'0' lucid \
 	light-mode for @unixorn/git-extra-commands
-
-zinit wait'0a' lucid \
-	atload"source $ZHOMEDIR/rc/pluginconfig/zsh-abbrev-alias_atinit.zsh" \
-	light-mode for @momo-lab/zsh-abbrev-alias
 # do not execute eval & do not map ~~
 # zinit wait'!0a' lucid \
 	#   atload"source $ZHOMEDIR/rc/pluginconfig/zsh-abbr_atinit.zsh" \
@@ -95,10 +91,10 @@ zinit wait'0a' lucid \
 # zinit wait'1' lucid \
 	#   atinit"source $ZHOMEDIR/rc/pluginconfig/zsh-z_atinit.zsh" \
 	#   light-mode for @agkozak/zsh-z
-zinit wait'1' lucid \
-	from"gh-r" as"program" pick"zoxide-*/zoxide" \
-	atload"source $ZHOMEDIR/rc/pluginconfig/zoxide_atload.zsh" \
-	light-mode for @ajeetdsouza/zoxide
+# zinit wait'1' lucid \
+# 	from"gh-r" as"program" pick"zoxide-*/zoxide" \
+# 	atload"source $ZHOMEDIR/rc/pluginconfig/zoxide_atload.zsh" \
+# 	light-mode for @ajeetdsouza/zoxide
 
 zinit wait'1' lucid \
 	light-mode for @mollifier/cd-gitroot
@@ -212,21 +208,6 @@ if [[ "${ZSH_INSTALL}" == "true" ]]; then
 	fi
 fi
 
-# git
-if builtin command -v make > /dev/null 2>&1; then
-	if [[ "${GIT_INSTALL}" == "true" ]]; then
-		zinit wait'0' lucid nocompile \
-			id-as=git as='null|readurl' \
-			mv"%ID% -> git.tar.gz" \
-			atclone'ziextract --move --auto git.tar.gz && \
-			make -j $[$(grep cpu.cores /proc/cpuinfo | sort -u | sed "s/[^0-9]//g") + 1] prefix=$ZPFX all install && \
-			\rm -rf $ZINIT[SNIPPETS_DIR]/git/*' \
-			atpull"%atclone" \
-			dlink='/git/git/archive/refs/tags/v%VERSION%.tar.gz' \
-			for https://github.com/git/git/tags/
-	fi
-fi
-
 # node (for coc.nvim)
 # zinit wait'0' lucid id-as=node as='readurl|command' \
 	#   nocompletions nocompile extract \
@@ -273,10 +254,10 @@ fi
 	# 	light-mode for @asdf-vm/asdf
 # GitHub #
 
-zinit wait'1' lucid \
-	from"gh-r" as'program' bpick'*linux_*.tar.gz' pick'gh*/**/gh' \
-	atload"source $ZHOMEDIR/rc/pluginconfig/gh_atload.zsh" \
-	light-mode for @cli/cli
+# zinit wait'1' lucid \
+# 	from"gh-r" as'program' bpick'*linux_*.tar.gz' pick'gh*/**/gh' \
+# 	atload"source $ZHOMEDIR/rc/pluginconfig/gh_atload.zsh" \
+# 	light-mode for @cli/cli
 
 # zinit wait'1' lucid \
 	# 	from"gh-r" as"program" cp"hub-*/etc/hub.zsh_completion -> _hub" pick"hub-*/bin/hub" \
