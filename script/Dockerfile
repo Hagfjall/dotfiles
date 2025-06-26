@@ -6,3 +6,5 @@ RUN apt update \
         zsh \
         git \
     && rm -rf /var/lib/{apt,cache,log}
+
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended

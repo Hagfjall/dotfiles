@@ -26,3 +26,13 @@ fi
 cd $HOME/.dotfiles
 script/install
 script/bootstrap
+
+# zsh
+# test
+ls -ahl $HOME
+which zsh
+zsh -c ". ~/.zshrc; echo -n DOTFILES: $DOTFILES; echo -n ZSH: $ZSH; echo -n plugins: $plugins; ps"
+zsh -ic "echo DOTFILES: $DOTFILES; echo ZSH: $ZSH"
+zsh -ic "echo plugins: $plugins"
+zsh -ic "st"
+zsh -ic "agli"

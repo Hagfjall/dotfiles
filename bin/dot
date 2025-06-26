@@ -38,12 +38,12 @@ while test $# -gt 0; do
 	shift
 done
 
-export ZSH=$HOME/.dotfiles
+export DOTFILES=$HOME/.dotfiles
 
 # Update dotfiles themselves
 echo "› git pull"
-git -C $ZSH pull
+git -C $DOTFILES pull
 
 # Install software
 echo "› script/install"
-$ZSH/script/install
+$DOTFILES/script/install
