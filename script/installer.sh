@@ -16,6 +16,13 @@ install_if_missing() {
 install_if_missing curl
 install_if_missing git
 install_if_missing zsh
-git clone --depth=1 https://github.com/hagfjall/dotfiles.git $HOME/.dotfiles
+
+if [ -d "/opt/dev/dotfiles" ]; then
+    mkdir -p "$HOME/.dotfiles/"
+    cp -r "/opt/dev/dotfiles/." "$HOME/.dotfiles/"
+else
+    git clone --depth=1 https://github.com/hagfjall/dotfiles.git $HOME/.dotfiles
+fi
 cd $HOME/.dotfiles
+script/install
 script/bootstrap
