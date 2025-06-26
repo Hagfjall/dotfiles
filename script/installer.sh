@@ -18,8 +18,10 @@ install_if_missing git
 install_if_missing zsh
 
 if [ -d "/opt/dev/dotfiles" ]; then
+    read
+    rm -rf "$HOME/.dotfiles/"
     mkdir -p "$HOME/.dotfiles/"
-    cp -r "/opt/dev/dotfiles/." "$HOME/.dotfiles/"
+    cp -rf "/opt/dev/dotfiles/." "$HOME/.dotfiles/"
 else
     git clone --depth=1 https://github.com/hagfjall/dotfiles.git $HOME/.dotfiles
 fi
@@ -27,12 +29,12 @@ cd $HOME/.dotfiles
 script/install
 script/bootstrap
 
-# zsh
 # test
 ls -ahl $HOME
 which zsh
 zsh -c ". ~/.zshrc; echo -n DOTFILES: $DOTFILES; echo -n ZSH: $ZSH; echo -n plugins: $plugins; ps"
 zsh -ic "echo DOTFILES: $DOTFILES; echo ZSH: $ZSH"
 zsh -ic "echo plugins: $plugins"
+zsh -ic "hagfjall"
 zsh -ic "st"
 zsh -ic "agli"

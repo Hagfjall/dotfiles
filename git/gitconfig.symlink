@@ -3,12 +3,6 @@
         path = ~/.gitconfig.local
 [hub]
         protocol = https
-[alias]
-        co = checkout
-        promote = !$DOTFILES/bin/git-promote
-        wtf     = !$DOTFILES/bin/git-wtf
-        rank-contributors = !$DOTFILES/bin/git-rank-contributors
-        count   = !git shortlog -sn
 [color]
         diff = auto
         status = auto
@@ -16,7 +10,7 @@
         ui = true
 [core]
         excludesfile = ~/.gitignore
-        editor = vim
+        editor = nano
 [apply]
         whitespace = nowarn
 [mergetool]
@@ -31,11 +25,6 @@
         #
         # Setting to git 2.0 default to suppress warning message
         default = simple
-[credential]
-	helper = osxkeychain
-[diff "spaceman-diff"]
-  command = /opt/homebrew/bin/spaceman-diff
-
 [init]
 	defaultBranch = main
 [pull]
