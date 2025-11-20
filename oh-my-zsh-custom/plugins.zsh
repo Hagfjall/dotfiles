@@ -1,1 +1,0 @@
-plugins=(git git-extras ubuntu)
