@@ -6,6 +6,7 @@ RUN echo "deb http://mirror.bahnhof.net/ubuntu/ noble main restricted universe m
     echo "deb http://mirror.bahnhof.net/ubuntu/ noble-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
     echo "deb http://mirror.bahnhof.net/ubuntu/ noble-security main restricted universe multiverse" >> /etc/apt/sources.list && \
     echo "deb http://mirror.bahnhof.net/ubuntu/ noble-backports main restricted universe multiverse" >> /etc/apt/sources.list
+RUN apt-get update && apt-get install -y fish git sudo ca-certificates curl
 COPY home/ /opt/dotfiles/home/
 COPY scripts/ /opt/dotfiles/scripts/
 COPY install.sh /opt/dotfiles/install.sh
