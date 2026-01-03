@@ -15,6 +15,10 @@ have_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
+have_package() {
+  dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "install ok installed"
+}
+
 script_dir_from_source() {
   local source_path="${BASH_SOURCE[0]:-}"
   local candidate_dir
@@ -92,9 +96,34 @@ install_packages() {
         return
       fi
     fi
-    log "Installing required packages via apt-get: ${packages[*]}"
+
+    # Filter out packages that are already installed
+    local packages_to_install=()
+    for pkg in "${packages[@]}"; do
+      case "$pkg" in
+        ca-certificates)
+          # Package without a command - check using dpkg
+          if ! have_package "$pkg"; then
+            packages_to_install+=("$pkg")
+          fi
+          ;;
+        *)
+          # Package with a command - check using command -v
+          if ! have_command "$pkg"; then
+            packages_to_install+=("$pkg")
+          fi
+          ;;
+      esac
+    done
+
+    if [ ${#packages_to_install[@]} -eq 0 ]; then
+      log "All required packages are already installed"
+      return
+    fi
+
+    log "Installing required packages via apt-get: ${packages_to_install[*]}"
     $sudo_cmd apt-get update
-    $sudo_cmd apt-get install -y "${packages[@]}"
+    $sudo_cmd apt-get install -y "${packages_to_install[@]}"
     return
   fi
 
