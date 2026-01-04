@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Power: Restart
+Comment=Restart the system
+Exec=systemctl reboot
+Icon=system-reboot
+Terminal=false
+Categories=System;
+Keywords=restart;reboot;power;
+NoDisplay=false

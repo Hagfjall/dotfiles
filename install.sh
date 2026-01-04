@@ -235,6 +235,21 @@ link_dotfiles() {
   done
 }
 
+setup_regolith() {
+  # Check if Regolith is installed
+  if ! have_package "regolith-desktop" && [ -z "${REGOLITH_VERSION:-}" ]; then
+    return
+  fi
+
+  log "Regolith detected, setting up power menu desktop entries"
+
+  # Update desktop database after symlinks are created
+  if have_command update-desktop-database; then
+    update-desktop-database "$DOTFILES_HOME/.local/share/applications" 2>/dev/null || true
+    log "Updated desktop database for power menu entries"
+  fi
+}
+
 main() {
   install_packages
 
@@ -249,6 +264,7 @@ main() {
   DOTFILES_DIR="$resolved_dir"
 
   link_dotfiles
+  setup_regolith
   install_fisher
   set_default_shell_to_fish
   log "Installation complete. Open a new fish shell to load the configuration."

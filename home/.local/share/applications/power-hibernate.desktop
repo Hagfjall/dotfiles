@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Power: Hibernate
+Comment=Hibernate the system
+Exec=systemctl hibernate
+Icon=system-hibernate
+Terminal=false
+Categories=System;
+Keywords=hibernate;sleep;suspend;power;
+NoDisplay=false

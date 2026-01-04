@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Power: Sleep
+Comment=Suspend the system
+Exec=systemctl suspend
+Icon=system-suspend
+Terminal=false
+Categories=System;
+Keywords=sleep;suspend;power;
+NoDisplay=false
