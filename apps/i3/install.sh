@@ -20,11 +20,37 @@ have_package() {
 
 # Detect session type
 detect_session() {
-  if [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
+  # 1. Check current environment
+  if [ "${XDG_SESSION_TYPE:-}" = "wayland" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
     echo "wayland"
-  else
-    echo "x11"
+    return
   fi
+
+  # 2. If running under sudo, check the original user's session via loginctl
+  if [ -n "${SUDO_USER:-}" ] && command -v loginctl >/dev/null 2>&1; then
+    # Get the session type for the user who invoked sudo
+    if loginctl list-sessions | grep -q " ${SUDO_USER} "; then
+        # Try to find a wayland session for this user
+        local session_ids
+        session_ids=$(loginctl list-sessions | grep " ${SUDO_USER} " | awk '{print $1}')
+        for id in $session_ids; do
+            if [ "$(loginctl show-session "$id" -p Type --value 2>/dev/null)" = "wayland" ]; then
+                echo "wayland"
+                return
+            fi
+        done
+    fi
+  fi
+
+  # 3. Check for Wayland socket in /run/user/UID as a fallback
+  local user_id
+  user_id=$(id -u "${SUDO_USER:-$(whoami)}")
+  if [ -d "/run/user/${user_id}" ] && find "/run/user/${user_id}" -maxdepth 1 -name "wayland-*" -type s 2>/dev/null | grep -q .; then
+    echo "wayland"
+    return
+  fi
+
+  echo "x11"
 }
 
 # Check if running with root privileges
@@ -46,6 +72,7 @@ if [ "$SESSION" = "wayland" ]; then
       rofi
       jq
       libnotify-bin
+      lm-sensors
     )
     echo -e "${BLUE}Installing Wayland display switcher dependencies...${NC}"
 else
@@ -54,6 +81,7 @@ else
       rofi
       x11-xserver-utils
       libnotify-bin
+      lm-sensors
     )
     echo -e "${BLUE}Installing X11 display switcher dependencies...${NC}"
 fi
@@ -79,7 +107,7 @@ if [ "$all_installed" = true ]; then
         have_command swaymsg && swaymsg -v || echo "Sway version: (installed via system)"
         jq --version
     else
-        xrandr --version
+        xrandr --versionXDG_SESSION_TYPE
     fi
     echo ""
     exit 0
