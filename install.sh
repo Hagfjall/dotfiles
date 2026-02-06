@@ -142,6 +142,12 @@ install_fisher() {
     return
   fi
 
+  # Check if fisher is already installed
+  if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/fish/functions/fisher.fish" ]; then
+     log "fisher is already installed."
+     return
+  fi
+
   local fish_installer="$DOTFILES_DIR/scripts/install_fisher.fish"
   if [ ! -f "$fish_installer" ]; then
     log "fish installer script missing at $fish_installer"
@@ -218,8 +224,21 @@ link_path() {
   local dst="$2"
 
   if [ -d "$src" ]; then
-    mkdir -p "$dst"
+    if [ ! -d "$dst" ]; then
+        mkdir -p "$dst"
+    fi
     return
+  fi
+
+  # Check if destination exists and is a symlink pointing to the correct source
+  if [ -L "$dst" ]; then
+    local current_target
+    # readlink usually returns absolute path if created with absolute, or relative if relative.
+    # We are creating links with absolute paths in this script.
+    current_target="$(readlink "$dst")"
+    if [ "$current_target" = "$src" ]; then
+        return
+    fi
   fi
 
   mkdir -p "$(dirname "$dst")"
