@@ -1,0 +1,15 @@
+# Allow WireGuard VPN connections without password prompt
+# This file should be copied/linked to /etc/sudoers.d/wireguard
+#
+# Installation:
+#   sudo cp /path/to/wireguard-sudoers /etc/sudoers.d/wireguard
+#   sudo chmod 440 /etc/sudoers.d/wireguard
+#   sudo visudo -c  # Validate syntax
+#
+# Usage after installation:
+#   wg-quick up wg0    # No sudo needed
+#   wg-quick down wg0  # No sudo needed
+
+# Allow all users in sudo group to run wg-quick without password
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/wg-quick up *
+%sudo ALL=(ALL) NOPASSWD: /usr/bin/wg-quick down *

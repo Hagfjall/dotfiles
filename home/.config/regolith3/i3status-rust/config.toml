@@ -1,0 +1,80 @@
+# i3status-rust configuration for Regolith 3
+# This file is managed by dotfiles
+
+[theme]
+theme = "semi-native"
+
+[icons]
+icons = "awesome4"
+
+# CPU Temperature
+[[block]]
+block = "custom"
+command = "/home/user/git/dotfiles/apps/i3/get_cpu_temp.sh"
+interval = 10
+
+# VPN Status - only shows when connected
+[[block]]
+block = "custom"
+command = "/home/user/git/dotfiles/apps/i3/vpn-status.sh"
+interval = 5
+hide_when_empty = true
+
+# Network
+[[block]]
+block = "net"
+
+# Disk Space
+[[block]]
+block = "disk_space"
+path = "/"
+info_type = "available"
+alert_unit = "GB"
+interval = 20
+warning = 20.0
+alert = 10.0
+format = " $icon $available.eng(w:2) "
+
+# Memory
+[[block]]
+block = "memory"
+format = " $icon $mem_total_used_percents.eng(w:2) "
+format_alt = " $icon_swap $swap_used_percents.eng(w:2) "
+
+# Battery
+[[block]]
+block = "battery"
+format = " $icon\u2009 $percentage "
+missing_format = ""
+device = "DisplayDevice"
+driver = "upower"
+
+# Notifications
+[[block]]
+block = "rofication"
+interval = 1
+socket_path = "/tmp/rofi_notification_daemon"
+[[block.click]]
+button = "left"
+cmd = "ilia -p notifications"
+
+# Sound
+[[block]]
+block = "sound"
+driver = "pulseaudio"
+
+[[block.click]]
+button = "left"
+cmd = "regolith-control-center sound"
+
+# Date
+[[block]]
+block = "time"
+interval = 5
+format = "\uf073 $timestamp.datetime(f:'%a-%d/%m/%y')"
+
+# Time
+[[block]]
+block = "time"
+interval = 5
+format = "$icon $timestamp.datetime(f:'%R')"
