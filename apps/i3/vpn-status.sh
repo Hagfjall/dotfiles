@@ -10,7 +10,7 @@
 # Check if wg0 interface exists and is up
 if ip link show wg0 &>/dev/null; then
     # wg0 interface exists, VPN is connected
-    echo "󰦝 VPN"
+    echo "🌐🔗"
 fi
 
 # If wg0 doesn't exist, output nothing (block will be hidden)

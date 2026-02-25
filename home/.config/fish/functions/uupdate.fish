@@ -61,17 +61,15 @@ function uupdate --description "Update Ubuntu system (apt, snap, cleanup, reboot
     # Step 5: Check for reboot requirement
     echo $BLUE"[5/5]"$NORMAL" Checking reboot requirement..."
     if test -f /var/run/reboot-required
-        echo "$YELLOW┌────────────────────────────────────────┐$NORMAL"
-        echo "$YELLOW│  ⚠  SYSTEM REBOOT REQUIRED  ⚠         │$NORMAL"
-        echo "$YELLOW└────────────────────────────────────────┘$NORMAL"
+        echo "$RED┌────────────────────────────────────────┐$NORMAL"
+        echo "$RED│  ⚠  SYSTEM REBOOT REQUIRED  ⚠          │$NORMAL"
+        echo "$RED└────────────────────────────────────────┘$NORMAL"
         if test -f /var/run/reboot-required.pkgs
             echo "$YELLOW Packages requiring reboot:$NORMAL"
             cat /var/run/reboot-required.pkgs | while read -l pkg
                 echo "  - $pkg"
             end
         end
-        echo ""
-        echo "$YELLOW Run 'sudo reboot' to restart the system$NORMAL"
     else
         echo "$GREEN✓ No reboot required$NORMAL"
     end

@@ -13,6 +13,5 @@ alias ll 'l'
 alias st 'git status'
 
 # VPN aliases (requires setup-wireguard.sh to be run first)
-alias vpn-up 'sudo wg-quick up wg0'
-alias vpn-down 'sudo wg-quick down wg0'
-alias vpn-status 'sudo wg show wg0 2>/dev/null && echo "VPN: Connected" || echo "VPN: Disconnected"'
+alias vpnu 'wg-quick up wg0'
+alias vpnd 'wg-quick down wg0'

@@ -17,7 +17,7 @@ interval = 10
 [[block]]
 block = "custom"
 command = "/home/user/git/dotfiles/apps/i3/vpn-status.sh"
-interval = 5
+interval = 30
 hide_when_empty = true
 
 # Network
@@ -50,13 +50,13 @@ device = "DisplayDevice"
 driver = "upower"
 
 # Notifications
-[[block]]
-block = "rofication"
-interval = 1
-socket_path = "/tmp/rofi_notification_daemon"
-[[block.click]]
-button = "left"
-cmd = "ilia -p notifications"
+#[[block]]
+#block = "rofication"
+#interval = 1
+#socket_path = "/tmp/rofi_notification_daemon"
+#[[block.click]]
+#button = "left"
+#cmd = "ilia -p notifications"
 
 # Sound
 [[block]]
@@ -71,10 +71,10 @@ cmd = "regolith-control-center sound"
 [[block]]
 block = "time"
 interval = 5
-format = "\uf073 $timestamp.datetime(f:'%a-%d/%m/%y')"
+format = "\uf073 $timestamp.datetime(f:'%a-%m-%d')"
 
 # Time
 [[block]]
 block = "time"
 interval = 5
-format = "$icon $timestamp.datetime(f:'%R')"
+format = "$timestamp.datetime(f:'%R')"
