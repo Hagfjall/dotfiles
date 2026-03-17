@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=%h/.config/claude-code-telegram/.env
-ExecStart=%h/.local/bin/claude-code-telegram
+ExecStart=%h/.local/bin/claude-telegram-bot
 Restart=on-failure
 RestartSec=10
 
