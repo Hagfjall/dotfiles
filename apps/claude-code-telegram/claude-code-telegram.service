@@ -1,0 +1,14 @@
+[Unit]
+Description=Claude Code Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/claude-code-telegram/.env
+ExecStart=%h/.local/bin/claude-code-telegram
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
