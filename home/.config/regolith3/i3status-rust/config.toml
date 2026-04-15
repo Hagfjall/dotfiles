@@ -24,6 +24,12 @@ hide_when_empty = true
 [[block]]
 block = "net"
 
+# Keyboard layout (current XKB; pairs with per-window layout scripts in apps/i3)
+[[block]]
+block = "custom"
+command = "/home/user/git/dotfiles/apps/i3/layout-bar-status.sh"
+interval = 2
+
 # Disk Space
 [[block]]
 block = "disk_space"
