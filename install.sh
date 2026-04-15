@@ -84,7 +84,7 @@ ensure_repo_present() {
 }
 
 install_packages() {
-  local packages=(git sudo ca-certificates curl fish)
+  local packages=(git sudo ca-certificates curl fish jq)
 
   if have_command apt-get; then
     local sudo_cmd=""
@@ -299,6 +299,21 @@ main() {
   link_dotfiles
   setup_regolith
   create_local_aliases
+
+  if [ -f "$DOTFILES_DIR/apps/i3/setup-keyboard-layout-install.sh" ]; then
+    # shellcheck source=apps/i3/setup-keyboard-layout-install.sh
+    . "$DOTFILES_DIR/apps/i3/setup-keyboard-layout-install.sh"
+    configure_keyboard_layout_dotfiles "$DOTFILES_DIR" "$DOTFILES_HOME"
+  fi
+
+  if [ -f "$DOTFILES_DIR/apps/i3/ensure-xkb-switch.sh" ]; then
+    # shellcheck source=apps/i3/ensure-xkb-switch.sh
+    . "$DOTFILES_DIR/apps/i3/ensure-xkb-switch.sh"
+    if ! ensure_xkb_switch; then
+      log "xkb-switch is not in default Ubuntu repos on some releases; install skipped or failed (layout scripts fall back to setxkbmap)"
+    fi
+  fi
+
   install_fisher
   set_default_shell_to_fish
   log "Installation complete. Open a new fish shell to load the configuration."
