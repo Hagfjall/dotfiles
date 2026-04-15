@@ -79,6 +79,7 @@ else
     # X11 packages
     packages=(
       rofi
+      jq
       x11-xserver-utils
       libnotify-bin
       lm-sensors
@@ -88,34 +89,6 @@ fi
 
 echo ""
 
-# Check if all packages are already installed
-all_installed=true
-for package in "${packages[@]}"; do
-    if ! have_package "$package"; then
-        all_installed=false
-        break
-    fi
-done
-
-if [ "$all_installed" = true ]; then
-    echo -e "${GREEN}✓ All required packages are already installed${NC}"
-    echo ""
-    echo -e "${BLUE}Installation details:${NC}"
-    rofi -version
-
-    if [ "$SESSION" = "wayland" ]; then
-        have_command swaymsg && swaymsg -v || echo "Sway version: (installed via system)"
-        jq --version
-    else
-        xrandr --versionXDG_SESSION_TYPE
-    fi
-    echo ""
-    exit 0
-fi
-
-echo -e "${YELLOW}Updating package list...${NC}"
-apt-get update
-
 missing_packages=()
 for package in "${packages[@]}"; do
     if ! have_package "$package"; then
@@ -124,15 +97,17 @@ for package in "${packages[@]}"; do
 done
 
 if [ ${#missing_packages[@]} -gt 0 ]; then
+    echo -e "${YELLOW}Updating package list...${NC}"
+    apt-get update
     echo -e "${YELLOW}Installing missing packages: ${missing_packages[*]}...${NC}"
     if apt-get install -y "${missing_packages[@]}"; then
-        echo -e "${GREEN}✓ Packages installed successfully${NC}"
+        echo -e "${GREEN}Packages installed successfully${NC}"
     else
         echo -e "${RED}Error: Failed to install packages${NC}"
         exit 1
     fi
 else
-    echo -e "${GREEN}✓ All packages already installed${NC}"
+    echo -e "${GREEN}All required packages are already installed${NC}"
 fi
 
 echo ""
@@ -147,10 +122,39 @@ else
 fi
 echo ""
 
-echo -e "${GREEN}✓ Installation complete!${NC}"
+if [ "$SESSION" = "x11" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    DOTFILES_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+    target_home="${HOME:-/root}"
+    if [ -n "${SUDO_USER:-}" ]; then
+        uhome="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
+        if [ -n "$uhome" ]; then
+            target_home="$uhome"
+        fi
+    fi
+
+    # shellcheck source=ensure-xkb-switch.sh
+    . "$SCRIPT_DIR/ensure-xkb-switch.sh"
+    if ensure_xkb_switch; then
+        echo -e "${GREEN}xkb-switch is available${NC}"
+    else
+        echo -e "${YELLOW}xkb-switch install skipped or failed (layout scripts use setxkbmap as fallback)${NC}"
+    fi
+
+    # shellcheck source=setup-keyboard-layout-install.sh
+    . "$SCRIPT_DIR/setup-keyboard-layout-install.sh"
+    configure_keyboard_layout_dotfiles "$DOTFILES_DIR" "$target_home"
+    echo -e "${GREEN}Keyboard layout i3 fragment and i3status paths updated for $target_home${NC}"
+    echo ""
+fi
+
+echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Run: ./setup.sh"
 echo "  2. This will configure the display switcher and set up the keyboard shortcut"
 echo "  3. After setup, press Super+P to open the display mode selector"
+if [ "$SESSION" = "x11" ]; then
+    echo "  4. Reload i3 (i3-msg reload) and i3status-rust (pkill -SIGUSR2 i3status-rust)"
+fi
 echo ""
