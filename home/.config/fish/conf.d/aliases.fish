@@ -15,3 +15,9 @@ alias st 'git status'
 # VPN aliases (requires setup-wireguard.sh to be run first)
 alias vpnu 'wg-quick up wg0'
 alias vpnd 'wg-quick down wg0'
+
+# Local machine-specific aliases (not synced to repo)
+set -l local_aliases ~/.config/fish/conf.d/aliases.local.fish
+if test -f $local_aliases
+    source $local_aliases
+end

@@ -1,0 +1,30 @@
+# OpenClaw network policy
+# Allows unrestricted internet access (all protocols, all domains)
+# Plus access to local Chrome DevTools Protocol endpoint on the host
+
+version: 1
+
+network_policies:
+  # Allow all outbound internet traffic - wildcard host, all ports, no payload inspection
+  unrestricted_internet:
+    name: allow-all-internet
+    endpoints:
+      - host: "*"
+        port: 443
+        enforcement: enforce
+        access: read-write
+      - host: "*"
+        port: 80
+        enforcement: enforce
+        access: read-write
+
+  # Allow access to Chrome DevTools Protocol on the Docker host
+  # Chrome runs on the host with --remote-debugging-port=9222
+  # host.docker.internal resolves to the Docker host from inside the container
+  chrome_cdp:
+    name: chrome-devtools-protocol
+    endpoints:
+      - host: host.docker.internal
+        port: 9222
+        enforcement: enforce
+        access: read-write

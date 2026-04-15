@@ -254,6 +254,20 @@ link_dotfiles() {
   done
 }
 
+create_local_aliases() {
+  local local_aliases="${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/aliases.local.fish"
+  if [ -f "$local_aliases" ]; then
+    log "Local aliases file already exists at $local_aliases; leaving it untouched"
+    return
+  fi
+  mkdir -p "$(dirname "$local_aliases")"
+  cat > "$local_aliases" <<'EOF'
+# Machine-local aliases — not synced to the dotfiles repo.
+# Add your machine-specific aliases here.
+EOF
+  log "Created local aliases file at $local_aliases"
+}
+
 setup_regolith() {
   # Check if Regolith is installed
   if ! have_package "regolith-desktop" && [ -z "${REGOLITH_VERSION:-}" ]; then
@@ -284,6 +298,7 @@ main() {
 
   link_dotfiles
   setup_regolith
+  create_local_aliases
   install_fisher
   set_default_shell_to_fish
   log "Installation complete. Open a new fish shell to load the configuration."
