@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Auto-elevate using sudo if not running as root
+if [ "$(id -u)" -ne 0 ]; then
+    exec sudo /usr/local/bin/uupdate "$@"
+fi
+
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NORMAL='\033[0m'
+
+# Disable color output if stdout is not a tty
+if [ ! -t 1 ]; then
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NORMAL=''
+fi
+
+echo -e "${YELLOW}=== Ubuntu System Update ===${NORMAL}"
+echo ""
+
+# Step 1: Update APT package lists
+echo -e "${BLUE}[1/5]${NORMAL} Updating APT package lists..."
+if apt update; then
+    echo -e "${GREEN}✓ APT update completed${NORMAL}"
+else
+    echo -e "${RED}✗ APT update failed${NORMAL}"
+    exit 1
+fi
+echo ""
+
+# Step 2: Upgrade APT packages
+echo -e "${BLUE}[2/5]${NORMAL} Upgrading APT packages..."
+if apt upgrade -y; then
+    echo -e "${GREEN}✓ APT upgrade completed${NORMAL}"
+else
+    echo -e "${RED}✗ APT upgrade failed${NORMAL}"
+    exit 1
+fi
+echo ""
+
+# Step 3: Update Snap packages
+echo -e "${BLUE}[3/5]${NORMAL} Refreshing Snap packages..."
+if command -v snap >/dev/null 2>&1; then
+    if snap refresh; then
+        echo -e "${GREEN}✓ Snap refresh completed${NORMAL}"
+    else
+        echo -e "${YELLOW}⚠ Snap refresh failed (non-critical)${NORMAL}"
+    fi
+else
+    echo -e "${YELLOW}⚠ Snap not installed, skipping...${NORMAL}"
+fi
+echo ""
+
+# Step 4: Remove unnecessary packages
+echo -e "${BLUE}[4/5]${NORMAL} Removing unnecessary packages..."
+if apt autoremove -y; then
+    echo -e "${GREEN}✓ Autoremove completed${NORMAL}"
+else
+    echo -e "${YELLOW}⚠ Autoremove failed (non-critical)${NORMAL}"
+fi
+
+if apt autoclean; then
+    echo -e "${GREEN}✓ Autoclean completed${NORMAL}"
+else
+    echo -e "${YELLOW}⚠ Autoclean failed (non-critical)${NORMAL}"
+fi
+echo ""
+
+# Step 5: Check for reboot requirement
+echo -e "${BLUE}[5/5]${NORMAL} Checking reboot requirement..."
+if [ -f /var/run/reboot-required ]; then
+    echo -e "${RED}┌────────────────────────────────────────┐${NORMAL}"
+    echo -e "${RED}│  ⚠  SYSTEM REBOOT REQUIRED  ⚠          │${NORMAL}"
+    echo -e "${RED}└────────────────────────────────────────┘${NORMAL}"
+    if [ -f /var/run/reboot-required.pkgs ]; then
+        echo -e "${YELLOW} Packages requiring reboot:${NORMAL}"
+        while IFS= read -r pkg; do
+            echo "  - $pkg"
+        done < /var/run/reboot-required.pkgs
+    fi
+else
+    echo -e "${GREEN}✓ No reboot required${NORMAL}"
+fi
+echo ""
+
+echo -e "${GREEN}=== System Update Complete ===${NORMAL}"

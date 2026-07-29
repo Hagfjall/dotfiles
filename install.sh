@@ -283,6 +283,55 @@ setup_regolith() {
   fi
 }
 
+install_uupdate() {
+  local src="$DOTFILES_DIR/scripts/uupdate"
+  local dst="/usr/local/bin/uupdate"
+  local sudoers_dir="/etc/sudoers.d"
+  local sudoers_file="$sudoers_dir/uupdate"
+  local sudo_cmd=""
+
+  if [ ! -f "$src" ]; then
+    log "uupdate script missing at $src"
+    return 1
+  fi
+
+  # Clean up legacy fish function symlink if present and broken
+  if [ -L "$DOTFILES_HOME/.config/fish/functions/uupdate.fish" ] && [ ! -e "$DOTFILES_HOME/.config/fish/functions/uupdate.fish" ]; then
+    rm -f "$DOTFILES_HOME/.config/fish/functions/uupdate.fish"
+  fi
+
+  if [ "$(id -u)" -ne 0 ]; then
+    if have_command sudo; then
+      sudo_cmd="sudo"
+    else
+      log "Need sudo permission to install uupdate; skipping."
+      return 0
+    fi
+  fi
+
+  log "Installing uupdate script to $dst (owned by root)"
+  $sudo_cmd cp "$src" "$dst"
+  $sudo_cmd chown root:root "$dst"
+  $sudo_cmd chmod 755 "$dst"
+
+  if [ -d "$sudoers_dir" ]; then
+    log "Configuring passwordless sudo access for uupdate in $sudoers_file"
+    local tmp_sudoers
+    tmp_sudoers="$(mktemp)"
+    echo "ALL ALL=(ALL) NOPASSWD: $dst" > "$tmp_sudoers"
+    chmod 440 "$tmp_sudoers"
+    $sudo_cmd chown root:root "$tmp_sudoers"
+    if $sudo_cmd visudo -c -f "$tmp_sudoers" >/dev/null 2>&1; then
+      $sudo_cmd mv "$tmp_sudoers" "$sudoers_file"
+      $sudo_cmd chmod 440 "$sudoers_file"
+      log "Successfully configured sudoers for uupdate"
+    else
+      log "Failed visudo check for uupdate sudoers configuration"
+      rm -f "$tmp_sudoers"
+    fi
+  fi
+}
+
 main() {
   install_packages
 
@@ -299,6 +348,7 @@ main() {
   link_dotfiles
   setup_regolith
   create_local_aliases
+  install_uupdate
 
   if [ -f "$DOTFILES_DIR/apps/i3/setup-keyboard-layout-install.sh" ]; then
     # shellcheck source=apps/i3/setup-keyboard-layout-install.sh
