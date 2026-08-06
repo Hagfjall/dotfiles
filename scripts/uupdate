@@ -26,41 +26,42 @@ fi
 echo -e "${YELLOW}=== Ubuntu System Update ===${NORMAL}"
 echo ""
 
-# Step 1: Update APT package lists
-echo -e "${BLUE}[1/5]${NORMAL} Updating APT package lists..."
+# Step 1: Start Snap refresh in background if installed
+SNAP_PID=""
+SNAP_LOG=""
+if command -v snap >/dev/null 2>&1; then
+    SNAP_LOG=$(mktemp)
+    (snap refresh >"$SNAP_LOG" 2>&1) &
+    SNAP_PID=$!
+    echo -e "${BLUE}ℹ${NORMAL} Started Snap refresh in background..."
+fi
+
+# Step 2: Update APT package lists
+echo -e "${BLUE}[1/4]${NORMAL} Updating APT package lists..."
 if apt update; then
     echo -e "${GREEN}✓ APT update completed${NORMAL}"
 else
     echo -e "${RED}✗ APT update failed${NORMAL}"
+    [ -n "$SNAP_PID" ] && kill "$SNAP_PID" 2>/dev/null || true
+    [ -n "$SNAP_LOG" ] && rm -f "$SNAP_LOG"
     exit 1
 fi
 echo ""
 
-# Step 2: Upgrade APT packages
-echo -e "${BLUE}[2/5]${NORMAL} Upgrading APT packages..."
+# Step 3: Upgrade APT packages
+echo -e "${BLUE}[2/4]${NORMAL} Upgrading APT packages..."
 if apt upgrade -y; then
     echo -e "${GREEN}✓ APT upgrade completed${NORMAL}"
 else
     echo -e "${RED}✗ APT upgrade failed${NORMAL}"
+    [ -n "$SNAP_PID" ] && kill "$SNAP_PID" 2>/dev/null || true
+    [ -n "$SNAP_LOG" ] && rm -f "$SNAP_LOG"
     exit 1
 fi
 echo ""
 
-# Step 3: Update Snap packages
-echo -e "${BLUE}[3/5]${NORMAL} Refreshing Snap packages..."
-if command -v snap >/dev/null 2>&1; then
-    if snap refresh; then
-        echo -e "${GREEN}✓ Snap refresh completed${NORMAL}"
-    else
-        echo -e "${YELLOW}⚠ Snap refresh failed (non-critical)${NORMAL}"
-    fi
-else
-    echo -e "${YELLOW}⚠ Snap not installed, skipping...${NORMAL}"
-fi
-echo ""
-
 # Step 4: Remove unnecessary packages
-echo -e "${BLUE}[4/5]${NORMAL} Removing unnecessary packages..."
+echo -e "${BLUE}[3/4]${NORMAL} Removing unnecessary packages..."
 if apt autoremove -y; then
     echo -e "${GREEN}✓ Autoremove completed${NORMAL}"
 else
@@ -74,8 +75,23 @@ else
 fi
 echo ""
 
+# Wait for background Snap refresh to finish
+if [ -n "$SNAP_PID" ]; then
+    echo -e "${BLUE}ℹ${NORMAL} Waiting for background Snap refresh to complete..."
+    if wait "$SNAP_PID"; then
+        echo -e "${GREEN}✓ Snap refresh completed${NORMAL}"
+    else
+        echo -e "${YELLOW}⚠ Snap refresh failed (non-critical)${NORMAL}"
+        if [ -s "$SNAP_LOG" ]; then
+            cat "$SNAP_LOG"
+        fi
+    fi
+    rm -f "$SNAP_LOG"
+    echo ""
+fi
+
 # Step 5: Check for reboot requirement
-echo -e "${BLUE}[5/5]${NORMAL} Checking reboot requirement..."
+echo -e "${BLUE}[4/4]${NORMAL} Checking reboot requirement..."
 if [ -f /var/run/reboot-required ]; then
     echo -e "${RED}┌────────────────────────────────────────┐${NORMAL}"
     echo -e "${RED}│  ⚠  SYSTEM REBOOT REQUIRED  ⚠          │${NORMAL}"
