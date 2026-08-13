@@ -2,10 +2,7 @@ FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Use Swedish APT mirror (Bahnhof)
-RUN echo "deb http://mirror.bahnhof.net/ubuntu/ noble main restricted universe multiverse" > /etc/apt/sources.list && \
-    echo "deb http://mirror.bahnhof.net/ubuntu/ noble-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb http://mirror.bahnhof.net/ubuntu/ noble-security main restricted universe multiverse" >> /etc/apt/sources.list && \
-    echo "deb http://mirror.bahnhof.net/ubuntu/ noble-backports main restricted universe multiverse" >> /etc/apt/sources.list
+RUN sed -i -e 's@archive.ubuntu.com@mirror.bahnhof.net/ubuntu@g' -e 's@security.ubuntu.com@mirror.bahnhof.net/ubuntu@g' /etc/apt/sources.list.d/ubuntu.sources
 RUN apt-get update && apt-get install -y fish git sudo ca-certificates curl
 COPY home/ /opt/dotfiles/home/
 COPY scripts/ /opt/dotfiles/scripts/
