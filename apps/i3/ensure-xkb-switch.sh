@@ -55,5 +55,8 @@ ensure_xkb_switch() {
     sudo ldconfig 2>/dev/null || true
   fi
 
+  rm -rf "$tmp"
+  trap - RETURN
+
   command -v xkb-switch >/dev/null 2>&1
 }

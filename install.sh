@@ -84,7 +84,7 @@ ensure_repo_present() {
 }
 
 install_packages() {
-  local packages=(git sudo ca-certificates curl fish jq)
+  local packages=(git sudo ca-certificates curl fish jq tmux)
 
   if have_command apt-get; then
     local sudo_cmd=""
@@ -349,6 +349,10 @@ main() {
   setup_regolith
   create_local_aliases
   install_uupdate
+
+  if [ -f "$DOTFILES_DIR/apps/tmux/setup.sh" ]; then
+    bash "$DOTFILES_DIR/apps/tmux/setup.sh" "$DOTFILES_DIR" "$DOTFILES_HOME"
+  fi
 
   if [ -f "$DOTFILES_DIR/apps/i3/setup-keyboard-layout-install.sh" ]; then
     # shellcheck source=apps/i3/setup-keyboard-layout-install.sh
