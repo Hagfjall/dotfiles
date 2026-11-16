@@ -37,7 +37,7 @@ if command -v snap >/dev/null 2>&1; then
 fi
 
 # Step 2: Update APT package lists
-echo -e "${BLUE}[1/4]${NORMAL} Updating APT package lists..."
+echo -e "${BLUE}[1/5]${NORMAL} Updating APT package lists..."
 if apt update; then
     echo -e "${GREEN}✓ APT update completed${NORMAL}"
 else
@@ -48,9 +48,9 @@ else
 fi
 echo ""
 
-# Step 3: Upgrade APT packages
-echo -e "${BLUE}[2/4]${NORMAL} Upgrading APT packages..."
-if apt upgrade -y; then
+# Step 3: Upgrade APT packages (using full-upgrade to handle kernel and driver dependencies)
+echo -e "${BLUE}[2/5]${NORMAL} Upgrading APT packages..."
+if apt full-upgrade -y; then
     echo -e "${GREEN}✓ APT upgrade completed${NORMAL}"
 else
     echo -e "${RED}✗ APT upgrade failed${NORMAL}"
@@ -61,7 +61,7 @@ fi
 echo ""
 
 # Step 4: Remove unnecessary packages
-echo -e "${BLUE}[3/4]${NORMAL} Removing unnecessary packages..."
+echo -e "${BLUE}[3/5]${NORMAL} Removing unnecessary packages..."
 if apt autoremove -y; then
     echo -e "${GREEN}✓ Autoremove completed${NORMAL}"
 else
@@ -90,8 +90,26 @@ if [ -n "$SNAP_PID" ]; then
     echo ""
 fi
 
-# Step 5: Check for reboot requirement
-echo -e "${BLUE}[4/4]${NORMAL} Checking reboot requirement..."
+# Step 5: Check Docker images for updates
+echo -e "${BLUE}[4/5]${NORMAL} Checking Docker images for updates..."
+DOCKER_UPDATER=""
+if [ -x /usr/local/bin/uupdate-docker-images ]; then
+    DOCKER_UPDATER="/usr/local/bin/uupdate-docker-images"
+elif [ -x "$(dirname "$0")/uupdate-docker-images" ]; then
+    DOCKER_UPDATER="$(dirname "$0")/uupdate-docker-images"
+fi
+
+if [ -n "$DOCKER_UPDATER" ] && command -v docker >/dev/null 2>&1; then
+    if ! "$DOCKER_UPDATER"; then
+        echo -e "${YELLOW}⚠ Docker image update check failed (non-critical)${NORMAL}"
+    fi
+else
+    echo -e "${BLUE}ℹ${NORMAL} Skipping Docker image updates (docker or uupdate-docker-images not found)"
+fi
+echo ""
+
+# Step 6: Check for reboot requirement
+echo -e "${BLUE}[5/5]${NORMAL} Checking reboot requirement..."
 if [ -f /var/run/reboot-required ]; then
     echo -e "${RED}┌────────────────────────────────────────┐${NORMAL}"
     echo -e "${RED}│  ⚠  SYSTEM REBOOT REQUIRED  ⚠          │${NORMAL}"

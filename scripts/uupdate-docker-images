@@ -1,0 +1,619 @@
+#!/usr/bin/env python3
+"""Check Docker images across ~/git compose files for updates and apply them interactively."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pwd
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from typing import Any
+
+import yaml
+
+# Colors (disabled when stdout is not a tty)
+if sys.stdout.isatty():
+    RED = "\033[0;31m"
+    GREEN = "\033[0;32m"
+    YELLOW = "\033[0;33m"
+    BLUE = "\033[0;34m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    NORMAL = "\033[0m"
+else:
+    RED = GREEN = YELLOW = BLUE = BOLD = DIM = NORMAL = ""
+
+MANIFEST_ACCEPT = ", ".join([
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.v2+json",
+])
+
+COMPOSE_NAME_RE = re.compile(r"^(docker-)?compose(\..+)?\.ya?ml$")
+ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+class ComposeYamlLoader(yaml.SafeLoader):
+    """SafeLoader that tolerates Docker Compose YAML tags like !reset and !override."""
+
+
+def _compose_tag_constructor(loader: yaml.SafeLoader, tag_suffix: str, node: yaml.Node) -> Any:
+    if isinstance(node, yaml.ScalarNode):
+        return loader.construct_scalar(node)
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node)
+    return None
+
+
+ComposeYamlLoader.add_multi_constructor("!", _compose_tag_constructor)
+
+
+@dataclass
+class ImageRef:
+    raw: str
+    resolved: str
+    registry: str
+    repo: str
+    tag: str | None
+    digest: str | None
+    env_var: str | None = None
+    env_default: str | None = None
+
+
+def get_target_home() -> str:
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        try:
+            return pwd.getpwnam(sudo_user).pw_dir
+        except KeyError:
+            pass
+    return os.path.expanduser("~")
+
+
+def discover_compose_files(git_root: str) -> list[str]:
+    if not os.path.isdir(git_root):
+        return []
+    compose_files: list[str] = []
+    for entry in sorted(os.listdir(git_root)):
+        if ".bak" in entry:
+            continue
+        repo_dir = os.path.join(git_root, entry)
+        # Only primary git repositories (skip backups and worktrees where .git is a file)
+        if not os.path.isdir(os.path.join(repo_dir, ".git")):
+            continue
+        try:
+            out = subprocess.check_output(
+                ["git", "-c", "safe.directory=*", "-C", repo_dir, "ls-files", "-z"],
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError:
+            continue
+        for rel_bytes in out.split(b"\0"):
+            if not rel_bytes:
+                continue
+            rel = rel_bytes.decode("utf-8", errors="replace")
+            if COMPOSE_NAME_RE.match(os.path.basename(rel)):
+                full_path = os.path.join(repo_dir, rel)
+                if os.path.isfile(full_path):
+                    compose_files.append(full_path)
+    return compose_files
+
+
+def load_dotenv(env_path: str) -> dict[str, str]:
+    env: dict[str, str] = {}
+    if not os.path.isfile(env_path):
+        return env
+    with open(env_path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+                val = val[1:-1]
+            env[key] = val
+    return env
+
+
+def parse_image_ref(raw: str, dotenv: dict[str, str]) -> ImageRef | None:
+    env_var = None
+    env_default = None
+
+    def _sub(match: re.Match[str]) -> str:
+        nonlocal env_var, env_default
+        var_name = match.group(1)
+        default_val = match.group(2) if match.group(2) is not None else ""
+        if env_var is None:
+            env_var = var_name
+            env_default = default_val
+        return dotenv.get(var_name, default_val)
+
+    resolved = ENV_VAR_RE.sub(_sub, raw.strip())
+    if not resolved or "${" in resolved:
+        return None
+
+    digest = None
+    name_tag = resolved
+    if "@" in resolved:
+        name_tag, digest = resolved.split("@", 1)
+
+    last_slash = name_tag.rfind("/")
+    last_colon = name_tag.rfind(":")
+    if last_colon > last_slash:
+        name_part = name_tag[:last_colon]
+        tag: str | None = name_tag[last_colon + 1 :]
+    else:
+        name_part = name_tag
+        tag = None if digest else "latest"
+
+    if tag == "local":
+        return None
+
+    parts = name_part.split("/", 1)
+    if len(parts) == 2 and ("." in parts[0] or ":" in parts[0] or parts[0] == "localhost"):
+        registry, repo = parts[0], parts[1]
+        if registry == "docker.io":
+            registry = "registry-1.docker.io"
+            if "/" not in repo:
+                repo = f"library/{repo}"
+    else:
+        registry = "registry-1.docker.io"
+        repo = name_part if "/" in name_part else f"library/{name_part}"
+
+    return ImageRef(
+        raw=raw,
+        resolved=resolved,
+        registry=registry,
+        repo=repo,
+        tag=tag,
+        digest=digest,
+        env_var=env_var,
+        env_default=env_default,
+    )
+
+
+def tag_signature(tag: str) -> tuple[tuple[bool, str | int], ...]:
+    """Return structural signature of a tag, separating literal text and integer segments."""
+    parts = re.split(r"(\d+)", tag)
+    sig: list[tuple[bool, str | int]] = []
+    for p in parts:
+        if not p:
+            continue
+        if p.isdigit():
+            sig.append((True, 0))
+        else:
+            sig.append((False, p))
+    return tuple(sig)
+
+
+def tag_version_tuple(tag: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in re.split(r"(\d+)", tag) if p.isdigit())
+
+
+class RegistryClient:
+    def __init__(self) -> None:
+        self._tokens: dict[tuple[str, str], str | None] = {}
+        self._tags_cache: dict[tuple[str, str, str], list[str]] = {}
+        self._digest_cache: dict[tuple[str, str, str], str | None] = {}
+
+    def _get_token(self, registry: str, repo: str, auth_header: str) -> str | None:
+        m = re.match(r"Bearer\s+(.*)", auth_header, re.I)
+        if not m:
+            return None
+        params = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
+        realm = params.pop("realm", None)
+        if not realm:
+            return None
+        qs = urllib.parse.urlencode(params)
+        url = f"{realm}?{qs}" if qs else realm
+        req = urllib.request.Request(url, headers={"User-Agent": "uupdate/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            return data.get("token") or data.get("access_token")
+
+    def _request(
+        self,
+        registry: str,
+        repo: str,
+        path_or_url: str,
+        method: str = "GET",
+        accept: str | None = None,
+    ) -> tuple[int, dict[str, str], bytes]:
+        url = path_or_url if path_or_url.startswith("http") else f"https://{registry}{path_or_url}"
+        token = self._tokens.get((registry, repo))
+        for attempt in range(2):
+            req = urllib.request.Request(url, method=method)
+            req.add_header("User-Agent", "uupdate/1.0")
+            if token:
+                req.add_header("Authorization", f"Bearer {token}")
+            if accept:
+                req.add_header("Accept", accept)
+            try:
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    headers = {k.lower(): v for k, v in resp.headers.items()}
+                    return resp.status, headers, resp.read()
+            except urllib.error.HTTPError as e:
+                if e.code == 401 and attempt == 0:
+                    auth = e.headers.get("WWW-Authenticate", "")
+                    token = self._get_token(registry, repo, auth)
+                    self._tokens[(registry, repo)] = token
+                    if token:
+                        continue
+                raise
+        raise RuntimeError("Unreachable")
+
+    def get_remote_digest(self, registry: str, repo: str, tag: str) -> str | None:
+        key = (registry, repo, tag)
+        if key in self._digest_cache:
+            return self._digest_cache[key]
+        try:
+            _, headers, _ = self._request(
+                registry,
+                repo,
+                f"/v2/{repo}/manifests/{urllib.parse.quote(tag, safe='')}",
+                method="HEAD",
+                accept=MANIFEST_ACCEPT,
+            )
+            digest = headers.get("docker-content-digest")
+            self._digest_cache[key] = digest
+            return digest
+        except Exception:
+            self._digest_cache[key] = None
+            return None
+
+    def list_candidate_tags(self, registry: str, repo: str, current_tag: str) -> list[str]:
+        # Leading non-digit prefix helps narrow OCI pagination on huge repos (e.g. ghcr.io)
+        m = re.match(r"^([^\d]*)", current_tag)
+        prefix = m.group(1) if m else ""
+        cache_key = (registry, repo, prefix)
+        if cache_key in self._tags_cache:
+            return self._tags_cache[cache_key]
+
+        tags: list[str] = []
+        if registry == "registry-1.docker.io":
+            # Docker Hub API returns most recently updated tags in a single fast request
+            url = f"https://hub.docker.com/v2/repositories/{repo}/tags/?page_size=100&ordering=last_updated"
+            req = urllib.request.Request(url, headers={"User-Agent": "uupdate/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+                tags = [item["name"] for item in data.get("results", []) if "name" in item]
+        else:
+            path: str | None = f"/v2/{repo}/tags/list?n=1000"
+            if prefix:
+                path += f"&last={urllib.parse.quote(prefix, safe='')}"
+            for _ in range(3):
+                if not path:
+                    break
+                _, headers, body = self._request(registry, repo, path)
+                data = json.loads(body)
+                tags.extend(data.get("tags") or [])
+                link = headers.get("link", "")
+                lm = re.search(r'<([^>]+)>;\s*rel="?next"?', link)
+                path = lm.group(1) if lm else None
+
+        self._tags_cache[cache_key] = tags
+        return tags
+
+
+def get_local_digest(image_ref: str) -> str | None:
+    try:
+        out = subprocess.check_output(
+            ["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", image_ref],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        digests = json.loads(out)
+        for item in digests:
+            if "@sha256:" in item:
+                return "sha256:" + item.split("@sha256:", 1)[1]
+    except Exception:
+        pass
+    return None
+
+
+def get_running_compose_projects() -> dict[str, tuple[str, list[str]]]:
+    """Map compose file realpath -> (project_name, [config_files])."""
+    mapping: dict[str, tuple[str, list[str]]] = {}
+    try:
+        out = subprocess.check_output(
+            ["docker", "compose", "ls", "--format", "json"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        projects = json.loads(out)
+    except Exception:
+        return mapping
+
+    for proj in projects:
+        name = proj.get("Name", "")
+        cfg_raw = proj.get("ConfigFiles", "")
+        cfg_files = [os.path.realpath(p.strip()) for p in cfg_raw.split(",") if p.strip()]
+        for cf in cfg_files:
+            mapping[cf] = (name, cfg_files)
+    return mapping
+
+
+def write_preserving_owner(path: str, content: str) -> None:
+    st = os.stat(path)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    os.chown(path, st.st_uid, st.st_gid)
+    os.chmod(path, st.st_mode)
+
+
+def update_dotenv_var(env_path: str, var_name: str, new_val: str) -> bool:
+    if not os.path.isfile(env_path):
+        return False
+    with open(env_path, "r", encoding="utf-8") as fh:
+        lines = fh.readlines()
+    changed = False
+    pattern = re.compile(rf"^(\s*{re.escape(var_name)}\s*=\s*)(['\"]?)([^'\"\n#]*)(['\"]?)(.*)$")
+    new_lines: list[str] = []
+    for line in lines:
+        m = pattern.match(line)
+        if m:
+            new_lines.append(f"{m.group(1)}{m.group(2)}{new_val}{m.group(4)}{m.group(5)}\n")
+            changed = True
+        else:
+            new_lines.append(line)
+    if changed:
+        write_preserving_owner(env_path, "".join(new_lines))
+    return changed
+
+
+def update_compose_image_line(compose_path: str, old_raw: str, new_raw: str) -> bool:
+    with open(compose_path, "r", encoding="utf-8") as fh:
+        lines = fh.readlines()
+    changed = False
+    new_lines: list[str] = []
+    pattern = re.compile(r"^(\s*image\s*:\s*)(['\"]?)" + re.escape(old_raw) + r"(['\"]?)(\s*(?:#.*)?)$")
+    for line in lines:
+        m = pattern.match(line.rstrip("\n"))
+        if m:
+            new_lines.append(f"{m.group(1)}{m.group(2)}{new_raw}{m.group(3)}{m.group(4)}\n")
+            changed = True
+        else:
+            new_lines.append(line)
+    if changed:
+        write_preserving_owner(compose_path, "".join(new_lines))
+    return changed
+
+
+def build_updated_raw_image(
+    ref: ImageRef,
+    new_tag: str,
+    new_digest: str | None,
+) -> tuple[str, str | None]:
+    """Return (new_raw_compose_image, new_env_var_value_or_None)."""
+    new_env_val = None
+    new_raw = ref.raw
+
+    if ref.env_var:
+        # e.g. ${IMMICH_VERSION:-v3.3.5} or ${IMMICH_VERSION:-v3.3.5}-cuda
+        # Strip any static suffix from new_tag if the env var didn't include it
+        old_env_val = ref.env_default or ""
+        # Find where the ${VAR...} sits in raw
+        m = ENV_VAR_RE.search(ref.raw)
+        if m:
+            after_var = ref.raw[m.end() :]
+            static_suffix = after_var.split("@", 1)[0]
+            if static_suffix and new_tag.endswith(static_suffix):
+                new_env_val = new_tag[: -len(static_suffix)]
+            else:
+                new_env_val = new_tag
+            if old_env_val != new_env_val:
+                replacement = f"${{{ref.env_var}:-{new_env_val}}}" if m.group(2) is not None else f"${{{ref.env_var}}}"
+                new_raw = ref.raw[: m.start()] + replacement + ref.raw[m.end() :]
+    elif ref.tag and new_tag != ref.tag:
+        # Replace :old_tag (before optional @sha256)
+        base = new_raw.split("@", 1)[0]
+        last_colon = base.rfind(":")
+        if last_colon != -1:
+            base = base[: last_colon + 1] + new_tag
+        else:
+            base = f"{base}:{new_tag}"
+        if "@" in new_raw:
+            new_raw = f"{base}@{new_raw.split('@', 1)[1]}"
+        else:
+            new_raw = base
+
+    if ref.digest and new_digest and new_digest != ref.digest:
+        new_raw = f"{new_raw.split('@', 1)[0]}@{new_digest}"
+
+    return new_raw, new_env_val
+
+
+def ask_yes_no(prompt: str) -> bool:
+    try:
+        with open("/dev/tty", "r", encoding="utf-8") as tty:
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            ans = tty.readline().strip().lower()
+            return ans in ("y", "yes")
+    except OSError:
+        try:
+            ans = input(prompt).strip().lower()
+            return ans in ("y", "yes")
+        except EOFError:
+            return False
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Check and update Docker images in ~/git compose files.")
+    parser.add_argument("--dry-run", action="store_true", help="Show available updates without prompting or modifying files.")
+    args = parser.parse_args()
+
+    target_home = get_target_home()
+    git_root = os.path.join(target_home, "git")
+    compose_files = discover_compose_files(git_root)
+    if not compose_files:
+        print(f"{BLUE}ℹ{NORMAL} No compose files found under {git_root}")
+        return 0
+
+    running_projects = get_running_compose_projects()
+    client = RegistryClient()
+    warnings: list[str] = []
+    updates_applied = 0
+    updates_found = 0
+
+    for compose_path in compose_files:
+        try:
+            with open(compose_path, "r", encoding="utf-8") as fh:
+                data: Any = yaml.load(fh, Loader=ComposeYamlLoader)
+        except Exception as e:
+            warnings.append(f"Failed to parse {compose_path}: {e}")
+            continue
+
+        if not isinstance(data, dict) or not isinstance(data.get("services"), dict):
+            continue
+
+        compose_dir = os.path.dirname(compose_path)
+        env_path = os.path.join(compose_dir, ".env")
+        rel_compose = os.path.relpath(compose_path, git_root)
+        real_compose = os.path.realpath(compose_path)
+
+        for svc_name, svc_cfg in data["services"].items():
+            if not isinstance(svc_cfg, dict) or "build" in svc_cfg or "image" not in svc_cfg:
+                continue
+            raw_image = svc_cfg["image"]
+            if not isinstance(raw_image, str):
+                continue
+
+            # Re-read .env on each service so shared vars (e.g. IMMICH_VERSION) reflect prior updates
+            dotenv = load_dotenv(env_path)
+            ref = parse_image_ref(raw_image, dotenv)
+            if not ref or not ref.tag:
+                continue
+
+            sig = tag_signature(ref.tag)
+            has_version_nums = any(is_int for is_int, _ in sig)
+
+            new_tag = ref.tag
+            new_digest: str | None = None
+            is_digest_update = False
+
+            if has_version_nums:
+                try:
+                    candidates = client.list_candidate_tags(ref.registry, ref.repo, ref.tag)
+                except urllib.error.HTTPError as e:
+                    if e.code in (401, 404):
+                        # Likely a local-only image (e.g. adiosfastforward, map-explorer-umami)
+                        continue
+                    warnings.append(f"{ref.resolved} ({rel_compose}): HTTP {e.code}")
+                    continue
+                except Exception as e:
+                    warnings.append(f"{ref.resolved} ({rel_compose}): {e}")
+                    continue
+
+                cur_ver = tag_version_tuple(ref.tag)
+                best_ver = cur_ver
+                for cand in candidates:
+                    if tag_signature(cand) == sig:
+                        cand_ver = tag_version_tuple(cand)
+                        if cand_ver > best_ver:
+                            best_ver = cand_ver
+                            new_tag = cand
+
+                if new_tag != ref.tag and ref.digest:
+                    new_digest = client.get_remote_digest(ref.registry, ref.repo, new_tag)
+
+            # Check floating tag or pinned digest if tag name didn't change
+            if new_tag == ref.tag:
+                remote_digest = client.get_remote_digest(ref.registry, ref.repo, ref.tag)
+                if not remote_digest:
+                    continue
+                if ref.digest:
+                    if remote_digest != ref.digest:
+                        new_digest = remote_digest
+                        is_digest_update = True
+                elif not has_version_nums:
+                    local_digest = get_local_digest(ref.resolved)
+                    if local_digest and remote_digest != local_digest:
+                        new_digest = remote_digest
+                        is_digest_update = True
+
+            if new_tag == ref.tag and not is_digest_update:
+                continue
+
+            updates_found += 1
+            if is_digest_update:
+                cur_disp = f"{ref.tag} ({(ref.digest or get_local_digest(ref.resolved) or '')[:19]}...)"
+                new_disp = f"{new_tag} ({(new_digest or '')[:19]}...)"
+            else:
+                cur_disp = ref.tag
+                new_disp = new_tag
+
+            print(
+                f"  {BOLD}{rel_compose}{NORMAL} [{svc_name}] "
+                f"{BLUE}{ref.repo}{NORMAL}: "
+                f"{YELLOW}{cur_disp}{NORMAL} -> {GREEN}{new_disp}{NORMAL}"
+            )
+
+            if args.dry_run:
+                continue
+
+            if not ask_yes_no("    Update this image? [y/N]: "):
+                continue
+
+            new_raw, new_env_val = build_updated_raw_image(ref, new_tag, new_digest)
+            changed_files: list[str] = []
+
+            if ref.env_var and new_env_val and ref.env_var in dotenv:
+                if update_dotenv_var(env_path, ref.env_var, new_env_val):
+                    changed_files.append(os.path.relpath(env_path, git_root))
+
+            if new_raw != ref.raw:
+                if update_compose_image_line(compose_path, ref.raw, new_raw):
+                    changed_files.append(rel_compose)
+
+            if changed_files:
+                print(f"    {GREEN}✓{NORMAL} Updated {', '.join(changed_files)}")
+
+            if real_compose in running_projects:
+                _, cfg_files = running_projects[real_compose]
+                cmd_base = ["docker", "compose"]
+                for cf in cfg_files:
+                    cmd_base.extend(["-f", cf])
+                print(f"    {BLUE}ℹ{NORMAL} Pulling and recreating running service '{svc_name}'...")
+                try:
+                    subprocess.run([*cmd_base, "pull", svc_name], check=True)
+                    subprocess.run([*cmd_base, "up", "-d", svc_name], check=True)
+                    print(f"    {GREEN}✓{NORMAL} Service '{svc_name}' updated")
+                except subprocess.CalledProcessError as e:
+                    print(f"    {RED}✗{NORMAL} Failed to update running service '{svc_name}': {e}")
+            elif is_digest_update and not ref.digest:
+                # Floating tag updated locally even if stack is stopped
+                try:
+                    subprocess.run(["docker", "pull", ref.resolved], check=True)
+                except subprocess.CalledProcessError as e:
+                    print(f"    {RED}✗{NORMAL} Failed to pull {ref.resolved}: {e}")
+            else:
+                print(f"    {DIM}(Stack not running; skipped docker compose up){NORMAL}")
+
+            updates_applied += 1
+
+    if updates_found == 0:
+        print(f"{GREEN}✓ All Docker images are up to date{NORMAL}")
+    elif not args.dry_run:
+        print(f"{GREEN}✓ Updated {updates_applied}/{updates_found} Docker image(s){NORMAL}")
+
+    for w in warnings:
+        print(f"{YELLOW}⚠ {w}{NORMAL}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

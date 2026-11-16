@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#
+# lessfilter - Syntax highlighting preprocessor filter for less / lesspipe
+#
+# Highlighters supported (in preference order):
+#   1. bat / batcat (Rust - fastest native performance)
+#   2. pygmentize   (Python Pygments)
+#   3. highlight    (C++ Highlight)
+#   4. source-highlight (GNU)
+
+set -u
+
+FILE="${1:-}"
+
+# Verify file exists and is readable
+if [ -z "$FILE" ] || [ ! -r "$FILE" ]; then
+    exit 1
+fi
+
+# If file is empty, nothing to highlight
+if [ ! -s "$FILE" ]; then
+    exit 0
+fi
+
+# Do not filter directories
+if [ -d "$FILE" ]; then
+    exit 1
+fi
+
+# Allow lesspipe to handle archives, packages, compressed files, documents, and media
+case "$(printf '%s' "$FILE" | tr '[:upper:]' '[:lower:]')" in
+    *.tar|*.tgz|*.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst|\
+    *.zip|*.deb|*.udeb|*.ddeb|*.ipk|*.rpm|*.7z|*.rar|*.cab|\
+    *.gz|*.bz2|*.xz|*.zst|*.z|\
+    *.iso|*.bin|*.img|\
+    *.pdf|*.ps|*.dvi|\
+    *.doc|*.docx|*.xls|*.xlsx|*.ppt|*.pptx|\
+    *.png|*.jpg|*.jpeg|*.gif|*.bmp|*.webp|*.tiff|*.tif|*.ico|*.pcd|*.tga|\
+    *.mp3|*.ogg|*.flac|*.wav|*.aac|*.m4a|\
+    *.mp4|*.mkv|*.avi|*.mov|*.wmv|*.webm|\
+    *.a|*.so|*.o|*.dylib|*.exe|*.arj|*.egg)
+        exit 1
+        ;;
+esac
+
+# Check for binary file encoding using `file`
+if command -v file >/dev/null 2>&1; then
+    mime_encoding="$(file -b --mime-encoding "$FILE" 2>/dev/null || true)"
+    if [ "$mime_encoding" = "binary" ]; then
+        exit 1
+    fi
+fi
+
+# Themes configured for light terminal backgrounds by default:
+# - bat:         GitHub / Solarized (light) / OneHalfLight / gruvbox-light
+# - pygments:    friendly / tango / solarized-light / gruvbox-light / pastie / autumn
+# - highlight:   base16/github / base16/solarized-light / base16/google-light
+BAT_THEME="${BAT_THEME:-GitHub}"
+PYGMENTS_STYLE="${LESSFILTER_STYLE:-friendly}"
+HIGHLIGHT_THEME="${HIGHLIGHT_STYLE:-base16/github}"
+
+# 1. Try bat / batcat (Rust-based, fastest performance)
+if command -v batcat >/dev/null 2>&1; then
+    batcat --color=always --style=plain --paging=never --theme="$BAT_THEME" "$FILE" 2>/dev/null && exit 0
+elif command -v bat >/dev/null 2>&1; then
+    bat --color=always --style=plain --paging=never --theme="$BAT_THEME" "$FILE" 2>/dev/null && exit 0
+fi
+
+# 2. Try pygmentize (Pygments Python library)
+if command -v pygmentize >/dev/null 2>&1; then
+    if [ -n "$PYGMENTS_STYLE" ]; then
+        pygmentize -f terminal256 -O "style=$PYGMENTS_STYLE" -g "$FILE" 2>/dev/null && exit 0
+    else
+        pygmentize -f terminal256 -g "$FILE" 2>/dev/null && exit 0
+    fi
+fi
+
+# 3. Try highlight (Andre Simon's highlight tool)
+if command -v highlight >/dev/null 2>&1; then
+    highlight --out-format=xterm256 --style="$HIGHLIGHT_THEME" --force "$FILE" 2>/dev/null && exit 0
+fi
+
+# 4. Try source-highlight (GNU Source-highlight)
+if command -v source-highlight >/dev/null 2>&1; then
+    source-highlight --failsafe --infer-lang -f esc --style-file=esc.style -i "$FILE" 2>/dev/null && exit 0
+fi
+
+# If no highlighter succeeded, exit non-zero so less/lesspipe displays original file
+exit 1

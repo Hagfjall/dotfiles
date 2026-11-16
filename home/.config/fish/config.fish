@@ -11,3 +11,10 @@ end
 
 # Added by Antigravity CLI installer
 set -gx PATH "/home/user/.local/bin" $PATH
+
+# opencode
+fish_add_path /home/user/.opencode/bin
+
+# bun
+fish_add_path /home/user/.bun/bin
+

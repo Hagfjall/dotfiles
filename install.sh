@@ -84,7 +84,7 @@ ensure_repo_present() {
 }
 
 install_packages() {
-  local packages=(git sudo ca-certificates curl fish jq tmux)
+  local packages=(git sudo ca-certificates curl fish jq tmux bat python3-pygments highlight)
 
   if have_command apt-get; then
     local sudo_cmd=""
@@ -101,8 +101,8 @@ install_packages() {
     local packages_to_install=()
     for pkg in "${packages[@]}"; do
       case "$pkg" in
-        ca-certificates)
-          # Package without a command - check using dpkg
+        ca-certificates|python3-pygments|bat)
+          # Package without a direct same-name command - check using dpkg
           if ! have_package "$pkg"; then
             packages_to_install+=("$pkg")
           fi
@@ -286,6 +286,8 @@ setup_regolith() {
 install_uupdate() {
   local src="$DOTFILES_DIR/scripts/uupdate"
   local dst="/usr/local/bin/uupdate"
+  local docker_src="$DOTFILES_DIR/scripts/uupdate-docker-images"
+  local docker_dst="/usr/local/bin/uupdate-docker-images"
   local sudoers_dir="/etc/sudoers.d"
   local sudoers_file="$sudoers_dir/uupdate"
   local sudo_cmd=""
@@ -313,6 +315,13 @@ install_uupdate() {
   $sudo_cmd cp "$src" "$dst"
   $sudo_cmd chown root:root "$dst"
   $sudo_cmd chmod 755 "$dst"
+
+  if [ -f "$docker_src" ]; then
+    log "Installing uupdate-docker-images script to $docker_dst (owned by root)"
+    $sudo_cmd cp "$docker_src" "$docker_dst"
+    $sudo_cmd chown root:root "$docker_dst"
+    $sudo_cmd chmod 755 "$docker_dst"
+  fi
 
   if [ -d "$sudoers_dir" ]; then
     log "Configuring passwordless sudo access for uupdate in $sudoers_file"
@@ -352,6 +361,10 @@ main() {
 
   if [ -f "$DOTFILES_DIR/apps/tmux/setup.sh" ]; then
     bash "$DOTFILES_DIR/apps/tmux/setup.sh" "$DOTFILES_DIR" "$DOTFILES_HOME"
+  fi
+
+  if [ -f "$DOTFILES_DIR/apps/less/setup.sh" ]; then
+    bash "$DOTFILES_DIR/apps/less/setup.sh" "$DOTFILES_DIR" "$DOTFILES_HOME"
   fi
 
   if [ -f "$DOTFILES_DIR/apps/i3/setup-keyboard-layout-install.sh" ]; then
