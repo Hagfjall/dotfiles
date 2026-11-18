@@ -1,0 +1,2 @@
+wm.bar.status_config: /home/user/.config/regolith3/i3status-rust/config.toml
+wm.binding.split_v: Shift+g
