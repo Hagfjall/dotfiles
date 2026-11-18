@@ -85,7 +85,7 @@ def discover_compose_files(git_root: str) -> list[str]:
         return []
     compose_files: list[str] = []
     for entry in sorted(os.listdir(git_root)):
-        if ".bak" in entry:
+        if ".bak" in entry or entry == "immich":
             continue
         repo_dir = os.path.join(git_root, entry)
         # Only primary git repositories (skip backups and worktrees where .git is a file)
@@ -441,11 +441,11 @@ def ask_yes_no(prompt: str) -> bool:
             sys.stdout.write(prompt)
             sys.stdout.flush()
             ans = tty.readline().strip().lower()
-            return ans in ("y", "yes")
+            return ans in ("", "y", "yes")
     except OSError:
         try:
             ans = input(prompt).strip().lower()
-            return ans in ("y", "yes")
+            return ans in ("", "y", "yes")
         except EOFError:
             return False
 
@@ -564,7 +564,7 @@ def main() -> int:
             if args.dry_run:
                 continue
 
-            if not ask_yes_no("    Update this image? [y/N]: "):
+            if not ask_yes_no("    Update this image? [Y/n]: "):
                 continue
 
             new_raw, new_env_val = build_updated_raw_image(ref, new_tag, new_digest)
