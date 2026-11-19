@@ -316,7 +316,7 @@ install_uupdate() {
   $sudo_cmd chown root:root "$dst"
   $sudo_cmd chmod 755 "$dst"
 
-  if [ -f "$docker_src" ]; then
+  if [ "$(hostname -s)" = "stigberget" ] && [ -f "$docker_src" ]; then
     log "Installing uupdate-docker-images script to $docker_dst (owned by root)"
     $sudo_cmd cp "$docker_src" "$docker_dst"
     $sudo_cmd chown root:root "$docker_dst"

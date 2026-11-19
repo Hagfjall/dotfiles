@@ -26,72 +26,54 @@ fi
 echo -e "${YELLOW}=== Ubuntu System Update ===${NORMAL}"
 echo ""
 
-# Step 1: Start Snap refresh in background if installed
+# Start Snap refresh in background if installed
 SNAP_PID=""
 SNAP_LOG=""
+SNAP_STATUS=""
 if command -v snap >/dev/null 2>&1; then
     SNAP_LOG=$(mktemp)
-    (snap refresh >"$SNAP_LOG" 2>&1) &
+    SNAP_STATUS=$(mktemp)
+    rm -f "$SNAP_STATUS"
+    (
+        if snap refresh >"$SNAP_LOG" 2>&1; then
+            echo 0 >"$SNAP_STATUS"
+        else
+            echo $? >"$SNAP_STATUS"
+        fi
+    ) &
     SNAP_PID=$!
     echo -e "${BLUE}ℹ${NORMAL} Started Snap refresh in background..."
 fi
 
-# Step 2: Update APT package lists
-echo -e "${BLUE}[1/5]${NORMAL} Updating APT package lists..."
-if apt update; then
-    echo -e "${GREEN}✓ APT update completed${NORMAL}"
-else
-    echo -e "${RED}✗ APT update failed${NORMAL}"
-    [ -n "$SNAP_PID" ] && kill "$SNAP_PID" 2>/dev/null || true
-    [ -n "$SNAP_LOG" ] && rm -f "$SNAP_LOG"
-    exit 1
-fi
+# Start APT update/upgrade/cleanup in background
+APT_LOG=$(mktemp)
+APT_STATUS=$(mktemp)
+rm -f "$APT_STATUS"
+(
+    export DEBIAN_FRONTEND=noninteractive
+    rc=0
+    {
+        apt update &&
+        apt full-upgrade -y &&
+        apt autoremove -y &&
+        apt autoclean
+    } >"$APT_LOG" 2>&1 || rc=$?
+    echo "$rc" >"$APT_STATUS"
+) &
+APT_PID=$!
+echo -e "${BLUE}ℹ${NORMAL} Started APT update & upgrade in background..."
 echo ""
 
-# Step 3: Upgrade APT packages (using full-upgrade to handle kernel and driver dependencies)
-echo -e "${BLUE}[2/5]${NORMAL} Upgrading APT packages..."
-if apt full-upgrade -y; then
-    echo -e "${GREEN}✓ APT upgrade completed${NORMAL}"
-else
-    echo -e "${RED}✗ APT upgrade failed${NORMAL}"
-    [ -n "$SNAP_PID" ] && kill "$SNAP_PID" 2>/dev/null || true
-    [ -n "$SNAP_LOG" ] && rm -f "$SNAP_LOG"
-    exit 1
-fi
-echo ""
+cleanup() {
+    [ -n "${SNAP_LOG:-}" ] && rm -f "$SNAP_LOG"
+    [ -n "${SNAP_STATUS:-}" ] && rm -f "$SNAP_STATUS"
+    [ -n "${APT_LOG:-}" ] && rm -f "$APT_LOG"
+    [ -n "${APT_STATUS:-}" ] && rm -f "$APT_STATUS"
+}
+trap cleanup EXIT
 
-# Step 4: Remove unnecessary packages
-echo -e "${BLUE}[3/5]${NORMAL} Removing unnecessary packages..."
-if apt autoremove -y; then
-    echo -e "${GREEN}✓ Autoremove completed${NORMAL}"
-else
-    echo -e "${YELLOW}⚠ Autoremove failed (non-critical)${NORMAL}"
-fi
-
-if apt autoclean; then
-    echo -e "${GREEN}✓ Autoclean completed${NORMAL}"
-else
-    echo -e "${YELLOW}⚠ Autoclean failed (non-critical)${NORMAL}"
-fi
-echo ""
-
-# Wait for background Snap refresh to finish
-if [ -n "$SNAP_PID" ]; then
-    echo -e "${BLUE}ℹ${NORMAL} Waiting for background Snap refresh to complete..."
-    if wait "$SNAP_PID"; then
-        echo -e "${GREEN}✓ Snap refresh completed${NORMAL}"
-    else
-        echo -e "${YELLOW}⚠ Snap refresh failed (non-critical)${NORMAL}"
-        if [ -s "$SNAP_LOG" ]; then
-            cat "$SNAP_LOG"
-        fi
-    fi
-    rm -f "$SNAP_LOG"
-    echo ""
-fi
-
-# Step 5: Check Docker images for updates
-echo -e "${BLUE}[4/5]${NORMAL} Checking Docker images for updates..."
+# Step 1: Check Docker images for updates (interactive, runs in foreground)
+echo -e "${BLUE}[1/4]${NORMAL} Checking Docker images for updates..."
 DOCKER_UPDATER=""
 if [ -x /usr/local/bin/uupdate-docker-images ]; then
     DOCKER_UPDATER="/usr/local/bin/uupdate-docker-images"
@@ -99,7 +81,7 @@ elif [ -x "$(dirname "$0")/uupdate-docker-images" ]; then
     DOCKER_UPDATER="$(dirname "$0")/uupdate-docker-images"
 fi
 
-if [ -n "$DOCKER_UPDATER" ] && command -v docker >/dev/null 2>&1; then
+if [ "$(hostname -s)" = "stigberget" ] && [ -n "$DOCKER_UPDATER" ] && command -v docker >/dev/null 2>&1; then
     if ! "$DOCKER_UPDATER"; then
         echo -e "${YELLOW}⚠ Docker image update check failed (non-critical)${NORMAL}"
     fi
@@ -108,8 +90,95 @@ else
 fi
 echo ""
 
-# Step 6: Check for reboot requirement
-echo -e "${BLUE}[5/5]${NORMAL} Checking reboot requirement..."
+report_snap() {
+    local rc
+    rc=$(cat "$SNAP_STATUS" 2>/dev/null || echo 1)
+    if [ "$rc" -eq 0 ]; then
+        local updated
+        updated=$(awk '/refreshed$/ {print $1 " (" $2 ")"}' "$SNAP_LOG" 2>/dev/null || true)
+        if [ -n "$updated" ]; then
+            echo -e "${GREEN}✓ Snap refresh completed${NORMAL} — updated packages:"
+            while IFS= read -r line; do
+                echo "  - $line"
+            done <<< "$updated"
+        else
+            echo -e "${GREEN}✓ Snap refresh completed${NORMAL} (all snaps up to date)"
+        fi
+    else
+        echo -e "${YELLOW}⚠ Snap refresh failed (non-critical)${NORMAL}"
+        if [ -s "$SNAP_LOG" ]; then
+            tail -n 15 "$SNAP_LOG"
+        fi
+    fi
+    echo ""
+}
+
+report_apt() {
+    local rc
+    rc=$(cat "$APT_STATUS" 2>/dev/null || echo 1)
+    if [ "$rc" -eq 0 ]; then
+        local updated
+        updated=$(sed -n 's/^Unpacking \([^ ]*\) (\([^)]*\)).*/\1 (\2)/p' "$APT_LOG" 2>/dev/null | sort -u || true)
+        if [ -n "$updated" ]; then
+            local count
+            count=$(echo "$updated" | wc -l)
+            echo -e "${GREEN}✓ APT upgrade completed${NORMAL} — updated $count package(s):"
+            while IFS= read -r line; do
+                echo "  - $line"
+            done <<< "$updated"
+        else
+            echo -e "${GREEN}✓ APT upgrade completed${NORMAL} (all packages up to date)"
+        fi
+    else
+        echo -e "${RED}✗ APT update/upgrade failed${NORMAL}"
+        if [ -s "$APT_LOG" ]; then
+            tail -n 20 "$APT_LOG"
+        fi
+        return 1
+    fi
+    echo ""
+}
+
+# Step 2 & 3: Show background results (whatever finished first, then wait for remaining)
+SNAP_REPORTED=0
+APT_REPORTED=0
+
+if [ -n "$SNAP_PID" ] && [ -f "$SNAP_STATUS" ]; then
+    echo -e "${BLUE}[2/4]${NORMAL} Snap refresh result:"
+    wait "$SNAP_PID" 2>/dev/null || true
+    report_snap
+    SNAP_REPORTED=1
+fi
+
+if [ -f "$APT_STATUS" ]; then
+    step="[2/4]"
+    [ "$SNAP_REPORTED" -eq 1 ] && step="[3/4]"
+    echo -e "${BLUE}${step}${NORMAL} APT upgrade result:"
+    wait "$APT_PID" 2>/dev/null || true
+    report_apt
+    APT_REPORTED=1
+fi
+
+if [ -n "$SNAP_PID" ] && [ "$SNAP_REPORTED" -eq 0 ]; then
+    step="[2/4]"
+    [ "$APT_REPORTED" -eq 1 ] && step="[3/4]"
+    echo -e "${BLUE}${step}${NORMAL} Waiting for background Snap refresh to complete..."
+    wait "$SNAP_PID" 2>/dev/null || true
+    report_snap
+    SNAP_REPORTED=1
+fi
+
+if [ "$APT_REPORTED" -eq 0 ]; then
+    step="[2/4]"
+    [ "$SNAP_REPORTED" -eq 1 ] && step="[3/4]"
+    echo -e "${BLUE}${step}${NORMAL} Waiting for background APT upgrade to complete..."
+    wait "$APT_PID" 2>/dev/null || true
+    report_apt
+    APT_REPORTED=1
+fi
+
+# Step 4: Check for reboot requirement
+echo -e "${BLUE}[4/4]${NORMAL} Checking reboot requirement..."
 if [ -f /var/run/reboot-required ]; then
     echo -e "${RED}┌────────────────────────────────────────┐${NORMAL}"
     echo -e "${RED}│  ⚠  SYSTEM REBOOT REQUIRED  ⚠          │${NORMAL}"
